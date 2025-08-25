@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
+const BASE = import.meta.env.VITE_API_BASE || 'https://budgetbuddy-1-gp0s.onrender.com';
 
 function authHeader() {
   const token = localStorage.getItem('token');
