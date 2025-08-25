@@ -57,8 +57,9 @@
 
 
 
-// Changed 
-import { useRef, useState } from "react";
+// Changed
+
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ReCAPTCHA from "react-google-recaptcha";
 import { api } from "../api.js";
@@ -71,13 +72,22 @@ export default function Register() {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [loading, setLoading] = useState(false);
+  const [widgetReady, setWidgetReady] = useState(false);
   const captchaRef = useRef(null);
   const navigate = useNavigate();
   const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
+  useEffect(() => {
+    // basic visibility / diagnostics
+    if (!siteKey) {
+      setError("Captcha not configured: missing VITE_RECAPTCHA_SITE_KEY in client .env");
+    }
+  }, [siteKey]);
+
   const submit = async (e) => {
     e.preventDefault();
-    setError(""); setOk("");
+    setError("");
+    setOk("");
 
     const name = form.name.trim();
     const email = form.email.trim().toLowerCase();
@@ -86,19 +96,43 @@ export default function Register() {
     if (!name || !email || !password) return setError("All fields are required.");
     if (!GMAIL_RE.test(email)) return setError("Email must be a valid @gmail.com address.");
     if (!PASSWORD_RE.test(password)) {
-      return setError("Password must start with one capital letter, include a number & symbol, contain no spaces, only the first letter uppercase, and be at least 8 characters.");
+      return setError(
+        "Password must start with one capital letter, include a number & symbol, contain no spaces, only the first letter uppercase, and be at least 8 characters."
+      );
     }
 
-    const captchaToken = await captchaRef.current.executeAsync();
-    captchaRef.current.reset();
+    if (!siteKey) {
+      return setError("Captcha not configured. Please contact support.");
+    }
+
+    if (!captchaRef.current || !widgetReady) {
+      return setError("Captcha not ready. Please wait a second and try again.");
+    }
+
+    let captchaToken = "";
+    try {
+      captchaToken = await captchaRef.current.executeAsync();
+      captchaRef.current.reset();
+    } catch (err) {
+      console.error("Captcha execute failed:", err);
+      return setError("Captcha failed. Please reload the page and try again.");
+    }
 
     setLoading(true);
-    const res = await api.register({ name, email, password, captchaToken });
-    setLoading(false);
-
-    if (res?.error) return setError(res.error);
-    setOk("Registered successfully! Redirecting to login…");
-    setTimeout(() => navigate("/login"), 800);
+    try {
+      const res = await api.register({ name, email, password, captchaToken });
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
+      setOk("Registered successfully! Redirecting to login…");
+      setTimeout(() => navigate("/login"), 800);
+    } catch (err) {
+      console.error("Register request error:", err);
+      setError("Network/CORS error. Check console.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -127,10 +161,15 @@ export default function Register() {
             onChange={(e) => setForm({ ...form, password: e.target.value })}
           />
 
+          {/* reCAPTCHA (invisible). Will render even if siteKey is empty, but we gate onSubmit */}
           <ReCAPTCHA
-            sitekey={siteKey}
+            sitekey={siteKey || "invalid-site-key-placeholder"}
             size="invisible"
             ref={captchaRef}
+            // onChange fires when a token is generated (invisible mode)
+            onErrored={() => setError("Captcha error. Reload and try again.")}
+            onExpired={() => setError("Captcha expired. Please submit again.")}
+            onLoad={() => setWidgetReady(true)}
           />
 
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}

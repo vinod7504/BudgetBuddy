@@ -35,8 +35,6 @@
 
 // Changed
 
-
-
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -47,30 +45,8 @@ import { verifyMailer } from "./utils/mailer.js";
 
 const app = express();
 
-/** CORS */
-const FRONTEND = process.env.CORS_ORIGIN; 
-const WHITELIST = [
-  FRONTEND,
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-].filter(Boolean);
-console.log("CORS whitelist:", WHITELIST);
-
-const corsOptions = {
-  origin(origin, cb) {
-    if (!origin) return cb(null, true); // allow curl/Postman
-    if (WHITELIST.includes(origin)) return cb(null, true);
-    return cb(new Error(`Not allowed by CORS: ${origin}`));
-  },
-  credentials: true,
-  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 204,
-};
-
-app.use(cors());
-app.options("*", cors(corsOptions)); // handle preflight globally
-/** end CORS */
+app.use(cors()); // ← unchanged
+app.set("trust proxy", true);
 
 app.use(express.json());
 
@@ -81,9 +57,15 @@ app.use("/api/expenses", expenseRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-connectDB().then(async () => {
-  await verifyMailer(); // log readiness at startup
-  app.listen(PORT, () => {
-    console.log(`API running on http://localhost:${PORT}`);
+connectDB()
+  .then(async () => {
+    await verifyMailer();
+
+    app.listen(PORT, () => {
+      console.log(`API running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("DB connection failed:", err?.message || err);
+    process.exit(1);
   });
-});
