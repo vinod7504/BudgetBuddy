@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 
 const FROM = process.env.MAIL_FROM;
-const APP = (process.env.MAIL_APP_PASS || '').replace(/\s+/g, ''); 
+const APP  = (process.env.MAIL_APP_PASS || '').replace(/\s+/g, ''); 
 
 export const mailer = nodemailer.createTransport({
   service: 'gmail',
@@ -12,12 +12,15 @@ export async function sendMail({ to, subject, html }) {
   try {
     return await mailer.sendMail({
       from: `"Budget Buddy" <${FROM}>`,
-      to,
-      subject,
-      html,
+      to, subject, html,
     });
   } catch (err) {
-    console.error('sendMail error:', err?.response?.toString?.() || err);
+    console.error('sendMail error =>', {
+      code: err?.code,
+      responseCode: err?.responseCode,
+      command: err?.command,
+      response: err?.response?.toString?.() || err?.message || String(err),
+    });
     throw err;
   }
 }
@@ -30,4 +33,3 @@ export async function verifyMailer() {
     console.error('Mailer verify failed:', e?.response?.toString?.() || e);
   }
 }
-

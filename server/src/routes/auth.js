@@ -99,6 +99,25 @@
 
 // export default router;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -158,7 +177,7 @@ router.post('/register/request-otp', async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // --- CHANGED: wrap mail send, cleanup on failure, dev log OTP ---
+    // === STEP 4 CHANGE: wrap mail send, cleanup on failure, return RAW error, dev log OTP
     try {
       await sendMail({
         to: normEmail,
@@ -167,16 +186,15 @@ router.post('/register/request-otp', async (req, res) => {
       });
     } catch (e) {
       await Otp.deleteOne({ email: normEmail, purpose: 'register' });
-      const msg = process.env.NODE_ENV === 'production'
-        ? 'Email send failed'
-        : `Email send failed: ${e?.response?.toString?.() || e?.message || e}`;
-      return res.status(500).json({ error: msg });
+      const raw = e?.response?.toString?.() || e?.message || String(e);
+      console.error('register/request-otp sendMail failed:', raw);
+      // TEMP for debugging: surface raw reason to client
+      return res.status(500).json({ error: raw });
     }
-
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[DEV] REGISTER OTP for ${normEmail}: ${otp}`);
     }
-    // --- END CHANGED ---
+    // === END STEP 4 ===
 
     return res.json({ message: 'OTP sent to email' });
   } catch (e) {
@@ -267,7 +285,7 @@ router.post('/password/forgot', async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // --- CHANGED: wrap mail send, cleanup on failure, dev log OTP ---
+    // === STEP 4 CHANGE: wrap mail send, cleanup on failure, return RAW error, dev log OTP
     try {
       await sendMail({
         to: normEmail,
@@ -276,16 +294,15 @@ router.post('/password/forgot', async (req, res) => {
       });
     } catch (e) {
       await Otp.deleteOne({ email: normEmail, purpose: 'reset' });
-      const msg = process.env.NODE_ENV === 'production'
-        ? 'Email send failed'
-        : `Email send failed: ${e?.response?.toString?.() || e?.message || e}`;
-      return res.status(500).json({ error: msg });
+      const raw = e?.response?.toString?.() || e?.message || String(e);
+      console.error('password/forgot sendMail failed:', raw);
+      // TEMP for debugging: surface raw reason to client
+      return res.status(500).json({ error: raw });
     }
-
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[DEV] RESET OTP for ${normEmail}: ${otp}`);
     }
-    // --- END CHANGED ---
+    // === END STEP 4 ===
 
     return res.json({ message: 'If the email exists, an OTP has been sent' });
   } catch (e) {
