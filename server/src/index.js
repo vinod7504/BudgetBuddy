@@ -68,7 +68,7 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
-app.use(cors(corsOptions));
+app.use(cors());
 app.options("*", cors(corsOptions)); // handle preflight globally
 /** end CORS */
 
