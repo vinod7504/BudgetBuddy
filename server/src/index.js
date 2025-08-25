@@ -41,16 +41,20 @@ import cors from "cors";
 import connectDB from "./lib/db.js";
 import authRoutes from "./routes/auth.js";
 import expenseRoutes from "./routes/expenses.js";
-import otpRoutes from "./routes/otp.js";   // ✅ add this import
+import otpRoutes from "./routes/otp.js";   
 import { verifyMailer } from "./utils/mailer.js";
 
 const app = express();
 
-app.use(cors({
-  origin: process.env.CORS_ORIGIN,
-  methods: "GET,POST,PUT,DELETE,PATCH",
-  credentials: true,
-}));
+
+// {
+//   origin: process.env.CORS_ORIGIN,
+//   methods: "GET,POST,PUT,DELETE,PATCH",
+//   credentials: true,
+// }
+
+
+app.use(cors());
 
 
 app.use(express.json());
