@@ -295,13 +295,13 @@ router.post('/password/verify-otp', async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 });
-
 // Step-3: Reset password using resetToken
 router.post('/password/reset', async (req, res) => {
   try {
     const { resetToken, newPassword } = req.body;
-    if (!resetToken || !newPassword)
+    if (!resetToken || !newPassword) {
       return res.status(400).json({ error: 'resetToken and newPassword required' });
+    }
 
     if (!PASSWORD_RE.test(newPassword)) {
       return res.status(400).json({
@@ -313,17 +313,35 @@ router.post('/password/reset', async (req, res) => {
     let payload;
     try {
       payload = jwt.verify(resetToken, process.env.JWT_SECRET);
-    } catch {
+    } catch (e) {
+      console.error('reset token verify failed:', e?.message);
       return res.status(400).json({ error: 'Invalid or expired token' });
     }
-    if (payload.purpose !== 'reset') return res.status(400).json({ error: 'Invalid token purpose' });
+    if (payload.purpose !== 'reset') {
+      return res.status(400).json({ error: 'Invalid token purpose' });
+    }
 
-    const user = await User.findOne({ email: payload.email });
-    if (!user) return res.status(400).json({ error: 'User not found' });
-
+    // compute hash and update explicitly
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    user.passwordHash = passwordHash;
-    await user.save();
+    const result = await User.updateOne(
+      { email: payload.email },           // email was normalized during verify-otp
+      { $set: { passwordHash } }
+    );
+
+    console.log('password reset update', {
+      email: payload.email,
+      matched: result.matchedCount,
+      modified: result.modifiedCount
+    });
+
+    if (result.matchedCount === 0) {
+      return res.status(400).json({ error: 'User not found' });
+    }
+    if (result.modifiedCount === 0) {
+      // This usually means the new password equals the existing one (same hash outcome)
+      // or Mongoose determined no change—very rare with a fresh hash.
+      return res.status(200).json({ message: 'Password unchanged (already the same?)' });
+    }
 
     // Invalidate any outstanding reset OTPs
     await Otp.deleteOne({ email: payload.email, purpose: 'reset' });
@@ -334,6 +352,7 @@ router.post('/password/reset', async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 });
+
 
 // =================== ME ===================
 router.get('/me', auth, async (req, res) => {

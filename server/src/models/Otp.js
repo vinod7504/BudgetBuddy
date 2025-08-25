@@ -7,6 +7,6 @@ const OtpSchema = new mongoose.Schema({
   expiresAt: { type: Date, required: true },
 }, { timestamps: true });
 
-OtpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL auto-clean
+OtpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export default mongoose.model('Otp', OtpSchema);
