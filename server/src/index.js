@@ -46,24 +46,21 @@ import { verifyMailer } from "./utils/mailer.js";
 
 const app = express();
 
-
-
-
-
 app.use(cors({
   origin: process.env.CORS_ORIGIN,
   methods: "GET,POST,PUT,DELETE,PATCH",
   credentials: true,
 }));
+
+
 app.use(express.json());
 
-// health check
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 // routes
 app.use("/api/auth", authRoutes);
 app.use("/api/expenses", expenseRoutes);
-app.use("/api/otp", otpRoutes);   // ✅ add this line
+app.use("/api/otp", otpRoutes);   
 
 const PORT = process.env.PORT || 5000;
 
