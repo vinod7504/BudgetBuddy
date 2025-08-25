@@ -40,6 +40,10 @@ export default function Login() {
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
           />
+          <p style={{ marginTop: 10 }}>
+            <Link to="/forgot">Forgot password?</Link>
+          </p>
+
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
           <button type="submit">Login</button>
         </form>
