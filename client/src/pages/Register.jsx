@@ -59,7 +59,9 @@
 
 // Changed
 
-import { useEffect, useRef, useState } from "react";
+
+
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ReCAPTCHA from "react-google-recaptcha";
 import { api } from "../api.js";
@@ -69,25 +71,17 @@ const GMAIL_RE = /^[a-z0-9._%+-]+@gmail\.com$/i;
 
 export default function Register() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [captchaToken, setCaptchaToken] = useState("");
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [loading, setLoading] = useState(false);
-  const [widgetReady, setWidgetReady] = useState(false);
-  const captchaRef = useRef(null);
-  const navigate = useNavigate();
-  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
-  useEffect(() => {
-    // basic visibility / diagnostics
-    if (!siteKey) {
-      setError("Captcha not configured: missing VITE_RECAPTCHA_SITE_KEY in client .env");
-    }
-  }, [siteKey]);
+  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+  const navigate = useNavigate();
 
   const submit = async (e) => {
     e.preventDefault();
-    setError("");
-    setOk("");
+    setError(""); setOk("");
 
     const name = form.name.trim();
     const email = form.email.trim().toLowerCase();
@@ -100,23 +94,8 @@ export default function Register() {
         "Password must start with one capital letter, include a number & symbol, contain no spaces, only the first letter uppercase, and be at least 8 characters."
       );
     }
-
-    if (!siteKey) {
-      return setError("Captcha not configured. Please contact support.");
-    }
-
-    if (!captchaRef.current || !widgetReady) {
-      return setError("Captcha not ready. Please wait a second and try again.");
-    }
-
-    let captchaToken = "";
-    try {
-      captchaToken = await captchaRef.current.executeAsync();
-      captchaRef.current.reset();
-    } catch (err) {
-      console.error("Captcha execute failed:", err);
-      return setError("Captcha failed. Please reload the page and try again.");
-    }
+    if (!siteKey) return setError("Captcha not configured.");
+    if (!captchaToken) return setError("Please complete the captcha.");
 
     setLoading(true);
     try {
@@ -161,15 +140,12 @@ export default function Register() {
             onChange={(e) => setForm({ ...form, password: e.target.value })}
           />
 
-          {/* reCAPTCHA (invisible). Will render even if siteKey is empty, but we gate onSubmit */}
+          {/* Visible reCAPTCHA v2 checkbox */}
           <ReCAPTCHA
-            sitekey={siteKey || "invalid-site-key-placeholder"}
-            size="invisible"
-            ref={captchaRef}
-            // onChange fires when a token is generated (invisible mode)
-            onErrored={() => setError("Captcha error. Reload and try again.")}
-            onExpired={() => setError("Captcha expired. Please submit again.")}
-            onLoad={() => setWidgetReady(true)}
+            sitekey={siteKey || "invalid-site-key"}
+            onChange={(token) => setCaptchaToken(token || "")}
+            onExpired={() => setCaptchaToken("")}
+            onErrored={() => setError("Captcha error. Please reload and try again.")}
           />
 
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}

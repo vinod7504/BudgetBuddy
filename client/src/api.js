@@ -138,7 +138,6 @@ export const api = {
     });
   },
 
-  // ---------- EXPENSES (existing) ----------
   async addExpense(payload) {
     return jfetch(`${BASE}/api/expenses`, {
       method: 'POST',
