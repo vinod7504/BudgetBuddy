@@ -34,44 +34,39 @@
 
 
 // Changed
-
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import connectDB from "./lib/db.js";
 import authRoutes from "./routes/auth.js";
 import expenseRoutes from "./routes/expenses.js";
-import otpRoutes from "./routes/otp.js";   
 import { verifyMailer } from "./utils/mailer.js";
 
 const app = express();
 
+const corsOptions = {
+  origin: true, 
+  credentials: true,
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
+};
 
-// {
-//   origin: process.env.CORS_ORIGIN,
-//   methods: "GET,POST,PUT,DELETE,PATCH",
-//   credentials: true,
-// }
-
-
-app.use(cors());
-
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); 
 
 app.use(express.json());
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-// routes
 app.use("/api/auth", authRoutes);
 app.use("/api/expenses", expenseRoutes);
-app.use("/api/otp", otpRoutes);   
 
 const PORT = process.env.PORT || 5000;
 
 connectDB().then(async () => {
-  await verifyMailer(); // test mailer connection on startup
-
-  app.listen(PORT, () =>
-    console.log(`API running on http://localhost:${PORT}`)
-  );
+  await verifyMailer();
+  app.listen(PORT, () => {
+    console.log(`API running on http://localhost:${PORT}`);
+  });
 });
