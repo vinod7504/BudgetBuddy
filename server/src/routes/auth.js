@@ -91,16 +91,13 @@ import auth from '../middleware/auth.js';
 const router = Router();
 
 const GMAIL_RE = /^[a-z0-9._%+-]+@gmail\.com$/i;
-// Start with capital, min 8, at least one digit and one symbol, no spaces,
-// and no other uppercase letters after the first.
 const PASSWORD_RE = /^(?=.{8,})(?=.*\d)(?=.*[^A-Za-z0-9\s])[A-Z](?!.*[A-Z])[^\s]+$/;
 
 function passwordSuggestions() {
-  // examples that satisfy the rule:
   return [
-    'Abcdef1!',      // A + lowercase + number + symbol
+    'Abcdef1!',    
     'Moneyapp2@',
-    'Budget3#x',     // Note: only first letter is uppercase; rest lowercase/digits/symbols
+    'Budget3#x',     
   ];
 }
 
@@ -112,18 +109,10 @@ router.post('/register', async (req, res) => {
 
     const normEmail = String(email).toLowerCase().trim();
 
-    // ✅ Allow only @gmail.com mails
     if (!GMAIL_RE.test(normEmail)) {
       return res.status(400).json({ error: 'Email must end with @gmail.com' });
     }
 
-    // ✅ Enforce password policy:
-    // - First letter capital
-    // - At least one number
-    // - At least one symbol
-    // - Only first letter uppercase (rest not uppercase)
-    // - No spaces
-    // - Min length: 8
     if (!PASSWORD_RE.test(password)) {
       return res.status(400).json({
         error:
