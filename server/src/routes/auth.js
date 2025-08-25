@@ -99,7 +99,6 @@
 
 // export default router;
 
-
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -119,8 +118,7 @@ function passwordSuggestions() {
 }
 
 function genOTP() {
-  // 6-digit numeric OTP
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(Math.floor(100000 + Math.random() * 900000)); // 6-digit
 }
 function exp(minutes = 10) {
   const d = new Date();
@@ -160,11 +158,25 @@ router.post('/register/request-otp', async (req, res) => {
       { upsert: true, new: true }
     );
 
-    await sendMail({
-      to: normEmail,
-      subject: 'Your Budget Buddy Registration OTP',
-      html: `<p>Hi ${name},</p><p>Your OTP is <b>${otp}</b>. It expires in 10 minutes.</p>`,
-    });
+    // --- CHANGED: wrap mail send, cleanup on failure, dev log OTP ---
+    try {
+      await sendMail({
+        to: normEmail,
+        subject: 'Your Budget Buddy Registration OTP',
+        html: `<p>Hi ${name},</p><p>Your OTP is <b>${otp}</b>. It expires in 10 minutes.</p>`,
+      });
+    } catch (e) {
+      await Otp.deleteOne({ email: normEmail, purpose: 'register' });
+      const msg = process.env.NODE_ENV === 'production'
+        ? 'Email send failed'
+        : `Email send failed: ${e?.response?.toString?.() || e?.message || e}`;
+      return res.status(500).json({ error: msg });
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[DEV] REGISTER OTP for ${normEmail}: ${otp}`);
+    }
+    // --- END CHANGED ---
 
     return res.json({ message: 'OTP sent to email' });
   } catch (e) {
@@ -255,11 +267,25 @@ router.post('/password/forgot', async (req, res) => {
       { upsert: true, new: true }
     );
 
-    await sendMail({
-      to: normEmail,
-      subject: 'Budget Buddy Password Reset OTP',
-      html: `<p>Your password reset OTP is <b>${otp}</b>. It expires in 10 minutes.</p>`,
-    });
+    // --- CHANGED: wrap mail send, cleanup on failure, dev log OTP ---
+    try {
+      await sendMail({
+        to: normEmail,
+        subject: 'Budget Buddy Password Reset OTP',
+        html: `<p>Your password reset OTP is <b>${otp}</b>. It expires in 10 minutes.</p>`,
+      });
+    } catch (e) {
+      await Otp.deleteOne({ email: normEmail, purpose: 'reset' });
+      const msg = process.env.NODE_ENV === 'production'
+        ? 'Email send failed'
+        : `Email send failed: ${e?.response?.toString?.() || e?.message || e}`;
+      return res.status(500).json({ error: msg });
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[DEV] RESET OTP for ${normEmail}: ${otp}`);
+    }
+    // --- END CHANGED ---
 
     return res.json({ message: 'If the email exists, an OTP has been sent' });
   } catch (e) {
@@ -295,6 +321,7 @@ router.post('/password/verify-otp', async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 });
+
 // Step-3: Reset password using resetToken
 router.post('/password/reset', async (req, res) => {
   try {
@@ -321,10 +348,9 @@ router.post('/password/reset', async (req, res) => {
       return res.status(400).json({ error: 'Invalid token purpose' });
     }
 
-    // compute hash and update explicitly
     const passwordHash = await bcrypt.hash(newPassword, 10);
     const result = await User.updateOne(
-      { email: payload.email },           // email was normalized during verify-otp
+      { email: payload.email },
       { $set: { passwordHash } }
     );
 
@@ -338,12 +364,9 @@ router.post('/password/reset', async (req, res) => {
       return res.status(400).json({ error: 'User not found' });
     }
     if (result.modifiedCount === 0) {
-      // This usually means the new password equals the existing one (same hash outcome)
-      // or Mongoose determined no change—very rare with a fresh hash.
       return res.status(200).json({ message: 'Password unchanged (already the same?)' });
     }
 
-    // Invalidate any outstanding reset OTPs
     await Otp.deleteOne({ email: payload.email, purpose: 'reset' });
 
     return res.json({ message: 'Password updated successfully' });
@@ -352,7 +375,6 @@ router.post('/password/reset', async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 });
-
 
 // =================== ME ===================
 router.get('/me', auth, async (req, res) => {
