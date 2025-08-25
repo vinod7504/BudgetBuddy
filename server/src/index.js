@@ -45,8 +45,8 @@ import { verifyMailer } from "./utils/mailer.js";
 
 const app = express();
 
-app.use(cors()); // ← unchanged
-app.set("trust proxy", true);
+app.use(cors());
+// app.set("trust proxy", true);
 
 app.use(express.json());
 
