@@ -6,11 +6,6 @@ function useQuery() {
   const { search } = useLocation();
   return useMemo(() => new URLSearchParams(search), [search]);
 }
-
-// same rules as backend:
-// start with ONE capital letter (and only that capital),
-// include at least one number and one symbol,
-// no spaces, min length 8
 const PASSWORD_RE = /^(?=.{8,})(?=.*\d)(?=.*[^A-Za-z0-9\s])[A-Z](?!.*[A-Z])[^\s]+$/;
 
 export default function ResetPassword() {

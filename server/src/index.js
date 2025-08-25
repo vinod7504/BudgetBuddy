@@ -46,11 +46,15 @@ import { verifyMailer } from "./utils/mailer.js";
 
 const app = express();
 
-app.use(cors({
-  origin: process.env.CORS_ORIGIN,
-  methods: "GET,POST,PUT,DELETE,PATCH",
-  credentials: true,
-}));
+
+// {
+//   origin: process.env.CORS_ORIGIN,
+//   methods: "GET,POST,PUT,DELETE,PATCH",
+//   credentials: true,
+// }
+
+
+app.use(cors());
 app.use(express.json());
 
 // health check

@@ -59,8 +59,6 @@
 
 // Changed 
 
-
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
@@ -70,22 +68,46 @@ export default function Register() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const requestOtp = async (e) => {
     e.preventDefault();
     setError("");
-    const res = await api.registerRequestOtp(form);
-    if (res.error) return setError(res.error);
-    setStep(2);
+    setLoading(true);
+    try {
+      const res = await api.registerRequestOtp({
+        name: form.name.trim(),
+        email: String(form.email).trim().toLowerCase(),
+        password: form.password
+      });
+      if (res?.error) return setError(res.error);
+      setStep(2);
+    } catch (err) {
+      setError("Network/CORS error. See console.");
+      console.error("register request-otp error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const verifyOtp = async (e) => {
     e.preventDefault();
     setError("");
-    const res = await api.registerVerify({ email: form.email, otp });
-    if (res.error) return setError(res.error);
-    navigate("/login");
+    setLoading(true);
+    try {
+      const res = await api.registerVerify({
+        email: String(form.email).trim().toLowerCase(),
+        otp: String(otp).trim()
+      });
+      if (res?.error) return setError(res.error);
+      navigate("/login");
+    } catch (err) {
+      setError("Network/CORS error. See console.");
+      console.error("register verify error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -102,7 +124,7 @@ export default function Register() {
             <input className="input" placeholder="Password" type="password"
               value={form.password} onChange={(e)=>setForm({...form, password:e.target.value})}/>
             {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
-            <button type="submit">Send OTP</button>
+            <button type="submit" disabled={loading}>{loading ? "Sending..." : "Send OTP"}</button>
           </form>
         )}
 
@@ -112,7 +134,9 @@ export default function Register() {
             <input className="input" placeholder="6-digit OTP"
               value={otp} onChange={(e)=>setOtp(e.target.value)} />
             {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
-            <button type="submit">Verify & Create Account</button>
+            <button type="submit" disabled={loading}>
+              {loading ? "Verifying..." : "Verify & Create Account"}
+            </button>
             <button type="button" onClick={()=>setStep(1)} style={{ marginTop: 8 }}>Back</button>
           </form>
         )}

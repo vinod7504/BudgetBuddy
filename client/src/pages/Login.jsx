@@ -5,20 +5,35 @@ import { api } from "../api.js";
 export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
-    const res = await api.login(form);
-    if (res.error) {
-      setError(res.error);
-      return;
+    setLoading(true);
+    try {
+      const res = await api.login({
+        email: String(form.email).trim().toLowerCase(),
+        password: form.password
+      });
+      if (res?.error) {
+        setError(res.error);
+      } else if (!res?.token) {
+        setError("Login failed (no token). Check server logs/CORS.");
+        console.log("Login raw response:", res);
+      } else {
+        localStorage.setItem("token", res.token);
+        localStorage.setItem("name", res.user?.name || "");
+        localStorage.setItem("email", res.user?.email || "");
+        navigate("/"); // go to home
+      }
+    } catch (err) {
+      setError("Network/CORS error. See console.");
+      console.error("Login fetch error:", err);
+    } finally {
+      setLoading(false);
     }
-    localStorage.setItem("token", res.token);
-    localStorage.setItem("name", res.user?.name || "");
-    localStorage.setItem("email", res.user?.email || "");
-    navigate("/");
   };
 
   return (
@@ -26,26 +41,17 @@ export default function Login() {
       <div className="card">
         <h2>Login</h2>
         <form onSubmit={submit} className="grid">
-          <input
-            className="input"
-            placeholder="Email"
-            type="email"
+          <input className="input" placeholder="Email" type="email"
             value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
-          <input
-            className="input"
-            placeholder="Password"
-            type="password"
+            onChange={(e) => setForm({ ...form, email: e.target.value })}/>
+          <input className="input" placeholder="Password" type="password"
             value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-          />
+            onChange={(e) => setForm({ ...form, password: e.target.value })}/>
           <p style={{ marginTop: 10 }}>
             <Link to="/forgot">Forgot password?</Link>
           </p>
-
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
-          <button type="submit">Login</button>
+          <button type="submit" disabled={loading}>{loading ? "Logging in..." : "Login"}</button>
         </form>
         <p style={{ marginTop: 10 }}>
           New here? <Link to="/register">Create an account</Link>
