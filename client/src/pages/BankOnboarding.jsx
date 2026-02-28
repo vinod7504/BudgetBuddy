@@ -34,6 +34,7 @@ export default function BankOnboarding() {
   const [phone, setPhone] = useState('');
   const [banks, setBanks] = useState([]);
   const [provider, setProvider] = useState('');
+  const [discoveryMode, setDiscoveryMode] = useState('');
   const [selectedBankCode, setSelectedBankCode] = useState('');
   const [consent, setConsent] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
@@ -92,6 +93,10 @@ export default function BankOnboarding() {
     e.preventDefault();
     setError('');
     setOk('');
+    setBanks([]);
+    setProvider('');
+    setSelectedBankCode('');
+    setDiscoveryMode('');
 
     if (!/^\d{10}$/.test(cleanPhone)) {
       setError('Enter a valid 10 digit mobile number.');
@@ -107,10 +112,14 @@ export default function BankOnboarding() {
       }
 
       setProvider(res?.provider || '');
+      setDiscoveryMode(String(res?.discoveryMode || ''));
       setBanks(res?.banks || []);
+      if (res?.message) {
+        setOk(res.message);
+      }
       if ((res?.banks || []).length > 0) {
         setSelectedBankCode(res.banks[0].code);
-        setOk('Select one bank and give permission to continue.');
+        if (!res?.message) setOk('Select one bank and give permission to continue.');
       } else {
         setError('No linked banks found for this number.');
       }
@@ -227,7 +236,14 @@ export default function BankOnboarding() {
 
       {banks.length > 0 && (
         <div className="card">
-          <h3>Banks linked with {formatPhone(cleanPhone || phone)}</h3>
+          <h3>
+            {discoveryMode === 'fip-list' ? 'Supported banks' : `Banks linked with ${formatPhone(cleanPhone || phone)}`}
+          </h3>
+          {discoveryMode === 'fip-list' && (
+            <p className="helper-text">
+              Account numbers are not returned by this endpoint. They will be available only after real consent/link flow.
+            </p>
+          )}
           <div className="bank-options">
             {banks.map((bank) => (
               <label key={bank.code} className="bank-option">
@@ -240,7 +256,11 @@ export default function BankOnboarding() {
                 />
                 <div>
                   <strong>{bank.name}</strong>
-                  <div className="helper-text">Account: {bank.accountMask}</div>
+                  {bank.accountMask ? (
+                    <div className="helper-text">Account: {bank.accountMask}</div>
+                  ) : (
+                    <div className="helper-text">Account details not available yet</div>
+                  )}
                   {onboardingComplete && selectedBankCode === bank.code && (
                     <div className="helper-text">Active bank</div>
                   )}

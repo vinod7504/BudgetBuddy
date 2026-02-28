@@ -179,9 +179,16 @@ router.get('/options', async (req, res) => {
     }
 
     const discovered = await discoverBanksByPhone(phone);
+    const discoveryMode = discovered.discoveryMode || 'unknown';
+    const message =
+      discoveryMode === 'fip-list'
+        ? 'Phone-linked account discovery is unavailable in current FIU setup. Showing supported banks list.'
+        : '';
     return res.json({
       phone,
       provider: discovered.provider,
+      discoveryMode,
+      message,
       banks: discovered.banks
     });
   } catch (err) {

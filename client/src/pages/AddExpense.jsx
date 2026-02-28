@@ -1,15 +1,22 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 
-const TYPES = ["Savings", "Food", "Utilities", "Rent", "Medicine"];
+const DEFAULT_TYPES = ["Savings", "Food", "Utilities", "Rent", "Medicine"];
+const CUSTOM_MARKER = "__custom__";
 
-const NORMALIZE = {
-  savings: "Savings",
-  food: "Food",
-  utilities: "Utilities",
-  rent: "Rent",
-  medicine: "Medicine",
-};
+function normalizeCategory(value) {
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 48);
+
+  if (!cleaned) return "";
+  return cleaned
+    .toLowerCase()
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 export default function AddExpense() {
   const [form, setForm] = useState({
@@ -19,8 +26,24 @@ export default function AddExpense() {
     date: "",
     notes: "",
   });
+  const [customType, setCustomType] = useState("");
+  const [categories, setCategories] = useState(DEFAULT_TYPES);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      const res = await api.expenseCategories();
+      if (Array.isArray(res?.categories) && res.categories.length > 0) {
+        setCategories(res.categories);
+      }
+    })();
+  }, []);
+
+  const selectedType = useMemo(() => {
+    if (form.type !== CUSTOM_MARKER) return form.type;
+    return normalizeCategory(customType);
+  }, [form.type, customType]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -29,32 +52,23 @@ export default function AddExpense() {
 
     const name = form.name.trim();
     const amountNum = Number(form.amount);
+    const category = normalizeCategory(selectedType);
 
     if (!name) return setErr("Name is required.");
-    if (!Number.isFinite(amountNum) || amountNum <= 0)
+    if (!category) return setErr("Choose or enter a category.");
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
       return setErr("Enter a valid amount.");
-
-    const normalized =
-      NORMALIZE[String(form.type).trim().toLowerCase()] ?? null;
-
-    if (!normalized || !TYPES.includes(normalized)) {
-      return setErr("Choose a valid type.");
     }
 
     const payload = {
       name,
-      type: normalized,        
-      category: normalized,    
+      type: category,
       amount: amountNum,
       notes: form.notes.trim(),
     };
-    if (form.date) {
-      payload.date = form.date;
-    }
-
+    if (form.date) payload.date = form.date;
 
     const res = await api.addExpense(payload);
-
     if (res?.error) {
       setErr(res.error);
       return;
@@ -62,10 +76,15 @@ export default function AddExpense() {
 
     setMsg("Expense added!");
     setForm({ name: "", type: "Food", amount: "", date: "", notes: "" });
+    setCustomType("");
+
+    if (!categories.includes(category)) {
+      setCategories((prev) => [...prev, category]);
+    }
   };
 
   return (
-    <div className="grid" style={{ maxWidth: 640, margin: "20px auto" }}>
+    <div className="grid" style={{ maxWidth: 680, margin: "20px auto" }}>
       <div className="card">
         <h2>Add Expenditure</h2>
         <form onSubmit={submit} className="grid">
@@ -75,16 +94,29 @@ export default function AddExpense() {
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
-          <select
-            value={form.type}
-            onChange={(e) => setForm({ ...form, type: e.target.value })}
-          >
-            {TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+
+          <div className="grid" style={{ gap: 8 }}>
+            <select
+              value={form.type}
+              onChange={(e) => setForm({ ...form, type: e.target.value })}
+            >
+              {categories.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+              <option value={CUSTOM_MARKER}>+ Add New Category</option>
+            </select>
+            {form.type === CUSTOM_MARKER && (
+              <input
+                className="input"
+                placeholder="Enter new category (e.g. Travel, Shopping)"
+                value={customType}
+                onChange={(e) => setCustomType(e.target.value)}
+              />
+            )}
+          </div>
+
           <input
             className="input"
             placeholder="Amount (₹)"
@@ -113,4 +145,3 @@ export default function AddExpense() {
     </div>
   );
 }
-

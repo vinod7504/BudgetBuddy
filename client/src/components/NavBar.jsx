@@ -1,12 +1,19 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { IoBook } from 'react-icons/io5';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { clearSession } from '../lib/session.js';
 
 export default function NavBar() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   const loggedIn = !!localStorage.getItem('token');
   const name = localStorage.getItem('name');
   const bankOnboarded = localStorage.getItem('bankOnboarded') === 'true';
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname, loggedIn]);
 
   const logout = () => {
     clearSession();
@@ -17,10 +24,21 @@ export default function NavBar() {
     <header className="nav-shell">
       <div className="nav container">
         <Link to="/" className="brand-link">
-          <IoBook /> Budget Buddy
+          <img src="/budget_buddy.png" alt="Budget Buddy" className="brand-logo" />
+          <span className="brand-text">Budget Buddy</span>
         </Link>
 
-        <div className="nav-right">
+        <button
+          className="nav-toggle"
+          type="button"
+          aria-label="Toggle menu"
+          aria-expanded={mobileOpen}
+          onClick={() => setMobileOpen((v) => !v)}
+        >
+          Menu
+        </button>
+
+        <div className={`nav-right ${mobileOpen ? 'open' : ''}`}>
           {loggedIn ? (
             <>
               <Link to="/add">Add</Link>

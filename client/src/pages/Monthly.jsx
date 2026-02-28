@@ -3,8 +3,22 @@ import { api } from '../api.js';
 import { ResponsiveContainer, PieChart, Pie, Tooltip, Legend, Cell } from 'recharts';
 
 const COLORS = ['#06b6d4', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
-const TYPES = ['Savings', 'Food', 'Utilities', 'Rent', 'Medicine'];
+const DEFAULT_TYPES = ['Savings', 'Food', 'Utilities', 'Rent', 'Medicine'];
 const PAGE_SIZE = 15;
+
+function normalizeCategory(value) {
+  const cleaned = String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 48);
+
+  if (!cleaned) return '';
+  return cleaned
+    .toLowerCase()
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
 
 export default function Monthly() {
   const now = new Date();
@@ -12,6 +26,7 @@ export default function Monthly() {
   const [year, setYear] = useState(String(now.getFullYear()));
   const [summary, setSummary] = useState({ total: 0, byType: [] });
   const [items, setItems] = useState([]);
+  const [categories, setCategories] = useState(DEFAULT_TYPES);
   const [meta, setMeta] = useState({
     page: 1,
     pages: 1,
@@ -41,12 +56,16 @@ export default function Monthly() {
     setErr('');
     setLoading(true);
     try {
-      const [s, l] = await Promise.all([
+      const [s, l, c] = await Promise.all([
         api.summary(m, y),
-        api.listByMonth(m, y, { page: p, limit: PAGE_SIZE, q, sortBy: 'date', sortOrder: 'desc' })
+        api.listByMonth(m, y, { page: p, limit: PAGE_SIZE, q, sortBy: 'date', sortOrder: 'desc' }),
+        api.expenseCategories()
       ]);
 
       setSummary(s?.error ? { total: 0, byType: [] } : s);
+      if (Array.isArray(c?.categories) && c.categories.length > 0) {
+        setCategories(c.categories);
+      }
 
       if (l?.error) {
         setErr(l.error);
@@ -100,10 +119,19 @@ export default function Monthly() {
   const saveEdit = async (id) => {
     setErr('');
     setMsg('');
-    const res = await api.updateExpense(id, { ...editForm, amount: Number(editForm.amount) });
+    const category = normalizeCategory(editForm.type);
+    if (!category) {
+      setErr('Category cannot be empty.');
+      return;
+    }
+
+    const res = await api.updateExpense(id, { ...editForm, type: category, amount: Number(editForm.amount) });
     if (res.error) {
       setErr(res.error);
       return;
+    }
+    if (!categories.includes(category)) {
+      setCategories((prev) => [...prev, category]);
     }
     setMsg('Updated successfully');
     await loadData();
@@ -190,7 +218,7 @@ export default function Monthly() {
           </button>
           <input
             className="input"
-            style={{ width: 260 }}
+            style={{ width: 'min(100%, 260px)' }}
             placeholder="Search name/type/notes"
             value={queryInput}
             onChange={(e) => setQueryInput(e.target.value)}
@@ -294,13 +322,12 @@ export default function Monthly() {
                 </td>
                 <td>
                   {editingId === it._id ? (
-                    <select value={editForm.type} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}>
-                      {TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
+                    <input
+                      className="input"
+                      list="expense-categories"
+                      value={editForm.type}
+                      onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
+                    />
                   ) : (
                     it.type
                   )}
@@ -356,6 +383,11 @@ export default function Monthly() {
             )}
           </tbody>
         </table>
+        <datalist id="expense-categories">
+          {categories.map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
       </div>
     </div>
   );

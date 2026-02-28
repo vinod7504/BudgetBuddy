@@ -161,6 +161,12 @@ export const api = {
     });
   },
 
+  async expenseCategories() {
+    return jfetch(`${BASE}/api/expenses/categories`, {
+      headers: { ...authHeader() }
+    });
+  },
+
   async listByMonth(month, year, options = {}) {
     const url = new URL(`${BASE}/api/expenses`);
     if (month && year) {

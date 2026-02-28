@@ -128,7 +128,7 @@
 
 
 import { Router } from 'express';
-import Expense, { EXPENSE_TYPES } from '../models/Expense.js';
+import Expense, { DEFAULT_EXPENSE_TYPES } from '../models/Expense.js';
 import auth from '../middleware/auth.js';
 import mongoose from 'mongoose';
 
@@ -157,17 +157,43 @@ function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function normalizeType(value) {
+  const cleaned = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!cleaned) return '';
+  return cleaned
+    .toLowerCase()
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+    .slice(0, 48);
+}
+
+function byTypeWithDefaults(aggRows) {
+  const totals = new Map(DEFAULT_EXPENSE_TYPES.map((type) => [type, 0]));
+  for (const row of aggRows || []) {
+    const type = normalizeType(row?._id);
+    if (!type) continue;
+    totals.set(type, round2(row?.total || 0));
+  }
+  return Array.from(totals.entries())
+    .map(([type, total]) => ({ type, total }))
+    .sort((a, b) => b.total - a.total);
+}
+
 // Create expense
 router.post('/', async (req, res) => {
   try {
     const { name, type, amount, date, notes } = req.body;
-    if (!name || !type || amount == null) return res.status(400).json({ error: 'name, type, amount are required' });
-    if (!EXPENSE_TYPES.includes(type)) return res.status(400).json({ error: 'Invalid type' });
+    const normalizedType = normalizeType(type);
+    if (!name || !normalizedType || amount == null) return res.status(400).json({ error: 'name, type, amount are required' });
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({ error: 'amount must be a valid positive number' });
+    }
 
     const exp = await Expense.create({
       userId: req.user.id,
       name,
-      type,
+      type: normalizedType,
       amount: Number(amount),
       date: date ? new Date(date) : new Date(),
       notes
@@ -260,7 +286,7 @@ router.get('/summary', async (req, res) => {
       { $group: { _id: '$type', total: { $sum: '$amount' } } }
     ]);
 
-    const byType = EXPENSE_TYPES.map(t => ({ type: t, total: Math.round((agg.find(a => a._id === t)?.total || 0) * 100) / 100 }));
+    const byType = byTypeWithDefaults(agg);
     const total = byType.reduce((s, x) => s + x.total, 0);
 
     res.json({ month: Number(month), year: Number(year), total, byType });
@@ -287,7 +313,7 @@ router.get('/summary/previous-month', async (req, res) => {
       { $group: { _id: '$type', total: { $sum: '$amount' } } }
     ]);
 
-    const byType = EXPENSE_TYPES.map(t => ({ type: t, total: Math.round((agg.find(a => a._id === t)?.total || 0) * 100) / 100 }));
+    const byType = byTypeWithDefaults(agg);
     const total = byType.reduce((s, x) => s + x.total, 0);
 
     res.json({ month: prevMonthIndex + 1, year: prevYear, total, byType });
@@ -361,14 +387,14 @@ router.get('/insights', async (req, res) => {
     const avgDaily = elapsedDays > 0 ? round2(totalSpend / elapsedDays) : 0;
     const projectedEnd = round2(avgDaily * daysInMonth);
 
-    const byType = EXPENSE_TYPES.map((type) => {
-      const row = byTypeAgg.find((it) => it._id === type);
-      return {
-        type,
+    const byType = (byTypeAgg || [])
+      .map((row) => ({
+        type: normalizeType(row?._id),
         total: round2(row?.total || 0),
         transactions: Number(row?.transactions || 0)
-      };
-    });
+      }))
+      .filter((row) => row.type)
+      .sort((a, b) => b.total - a.total);
 
     const topCategory = byType
       .slice()
@@ -472,16 +498,35 @@ router.put('/:id', async (req, res) => {
     const { name, type, amount, date, notes } = req.body;
     const exp = await Expense.findOne({ _id: id, userId: req.user.id });
     if (!exp) return res.status(404).json({ error: 'Expense not found' });
-    if (type && !EXPENSE_TYPES.includes(type)) return res.status(400).json({ error: 'Invalid type' });
+    if (type != null && !normalizeType(type)) return res.status(400).json({ error: 'Invalid type' });
+    if (amount != null && (!Number.isFinite(Number(amount)) || Number(amount) < 0)) {
+      return res.status(400).json({ error: 'amount must be a valid number' });
+    }
 
     if (name != null) exp.name = name;
-    if (type != null) exp.type = type;
+    if (type != null) exp.type = normalizeType(type);
     if (amount != null) exp.amount = Number(amount);
     if (date != null) exp.date = new Date(date);
     if (notes != null) exp.notes = notes;
 
     await exp.save();
     res.json({ message: 'Updated', expense: exp });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Distinct categories used by the logged-in user (+ defaults for quick pickers)
+router.get('/categories', async (req, res) => {
+  try {
+    const dynamic = await Expense.distinct('type', { userId: req.user.id });
+    const normalized = (dynamic || [])
+      .map((type) => normalizeType(type))
+      .filter(Boolean);
+    const extra = normalized.filter((type) => !DEFAULT_EXPENSE_TYPES.includes(type)).sort((a, b) => a.localeCompare(b));
+    const categories = [...DEFAULT_EXPENSE_TYPES, ...extra];
+    res.json({ categories });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });

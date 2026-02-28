@@ -190,7 +190,7 @@ export default function Home() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             className="input"
-            style={{ width: 240 }}
+            style={{ width: 'min(100%, 240px)' }}
             type="number"
             min="0"
             placeholder="Set monthly budget"

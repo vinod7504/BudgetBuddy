@@ -28,6 +28,11 @@ function isRouteNotFound(err) {
   return err.status === 404 || message.includes('route not found');
 }
 
+function isSkippableDiscoveryError(err) {
+  if (!(err instanceof AggregatorError)) return false;
+  return isRouteNotFound(err) || err.status === 401 || err.status === 403;
+}
+
 function pickFirstArray(...candidates) {
   for (const candidate of candidates) {
     if (Array.isArray(candidate) && candidate.length > 0) return candidate;
@@ -168,7 +173,7 @@ function normalizeBankCode(name) {
 
 function maskFromLast4(last4) {
   const clean = String(last4 || '').replace(/\D/g, '').slice(-4);
-  return clean ? `XXXXXX${clean}` : 'XXXXXX0000';
+  return clean ? `XXXXXX${clean}` : '';
 }
 
 function normalizeBanks(payload) {
@@ -478,6 +483,8 @@ function requirePath(name) {
 async function discoverWithSetu(phone) {
   const availabilityPath = process.env.SETU_ACCOUNT_AVAILABILITY_PATH || '';
   const availabilityPayloadKey = process.env.BANK_AGGREGATOR_PHONE_FIELD || 'mobileNumber';
+  const discoveryPath = String(process.env.SETU_PHONE_DISCOVERY_PATH || '').trim();
+  const allowFipFallback = String(process.env.SETU_ALLOW_FIP_FALLBACK || 'false').toLowerCase() === 'true';
 
   let availability = null;
   if (availabilityPath) {
@@ -487,13 +494,12 @@ async function discoverWithSetu(phone) {
         body: { [availabilityPayloadKey]: phone }
       });
     } catch (err) {
-      if (!isRouteNotFound(err)) throw err;
+      if (!isSkippableDiscoveryError(err)) throw err;
       // Ignore old/unavailable route and continue with discovery fallback.
-      availability = { skipped: true };
+      availability = { skipped: true, reason: err?.message || 'discovery pre-check failed' };
     }
   }
 
-  const discoveryPath = String(process.env.SETU_PHONE_DISCOVERY_PATH || '').trim();
   if (discoveryPath) {
     try {
       const discovered = await setuRequest(discoveryPath, {
@@ -502,12 +508,27 @@ async function discoverWithSetu(phone) {
       });
       const banks = normalizeBanks(discovered);
       if (banks.length > 0) {
-        return { provider: 'SETU', banks, raw: discovered };
+        return { provider: 'SETU', discoveryMode: 'phone-linked', banks, raw: discovered };
       }
     } catch (err) {
-      if (!isRouteNotFound(err)) throw err;
-      // If configured discovery route is invalid, fallback to FIP list endpoint.
+      if (!isSkippableDiscoveryError(err) || !allowFipFallback) throw err;
+      // If configured discovery route is invalid and fallback is enabled, fallback to FIP list endpoint.
     }
+  }
+
+  if (!allowFipFallback) {
+    throw new AggregatorError(
+      'Phone-linked bank discovery is unavailable for this Setu product configuration.',
+      {
+        status: 400,
+        code: 'AGGREGATOR_DISCOVERY_UNAVAILABLE',
+        details: {
+          availabilityPath: availabilityPath || '',
+          discoveryPath: discoveryPath || '',
+          hint: 'Configure SETU_PHONE_DISCOVERY_PATH to your Setu account-discovery endpoint, or enable SETU_ALLOW_FIP_FALLBACK=true only for testing.'
+        }
+      }
+    );
   }
 
   // Fallback: Setu Active FIP API (documented endpoint) to show selectable banks.
@@ -519,7 +540,12 @@ async function discoverWithSetu(phone) {
     fipData = await setuRequest('/api/v2/fips', { method: 'GET' });
   }
   const banks = normalizeBanks(fipData);
-  return { provider: 'SETU', banks, raw: { availability, discoveryFallback: '/v2/fips', fipData } };
+  return {
+    provider: 'SETU',
+    discoveryMode: 'fip-list',
+    banks,
+    raw: { availability, discoveryFallback: '/v2/fips', fipData }
+  };
 }
 
 async function discoverWithCustom(phone) {
@@ -530,7 +556,7 @@ async function discoverWithCustom(phone) {
     method,
     body: { [phoneField]: phone }
   });
-  return { provider: 'CUSTOM_HTTP', banks: normalizeBanks(data), raw: data };
+  return { provider: 'CUSTOM_HTTP', discoveryMode: 'custom', banks: normalizeBanks(data), raw: data };
 }
 
 async function linkWithSetu({ phone, bankCode, userRef }) {
@@ -540,14 +566,29 @@ async function linkWithSetu({ phone, bankCode, userRef }) {
   const bankField = process.env.BANK_AGGREGATOR_BANK_CODE_FIELD || 'bankCode';
   const userRefField = process.env.BANK_AGGREGATOR_USER_REF_FIELD || 'userRef';
 
-  const data = await setuRequest(path, {
-    method,
-    body: {
-      [phoneField]: phone,
-      [bankField]: bankCode,
-      [userRefField]: userRef
+  let data;
+  try {
+    data = await setuRequest(path, {
+      method,
+      body: {
+        [phoneField]: phone,
+        [bankField]: bankCode,
+        [userRefField]: userRef
+      }
+    });
+  } catch (err) {
+    if (isRouteNotFound(err)) {
+      throw new AggregatorError(
+        'Setu linking route is unavailable for this setup. Use consent flow APIs in your FIU product configuration.',
+        {
+          status: 400,
+          code: 'AGGREGATOR_LINK_UNSUPPORTED',
+          details: err?.details || null
+        }
+      );
     }
-  });
+    throw err;
+  }
   return normalizeLinkedBankResult(data, { code: bankCode });
 }
 
