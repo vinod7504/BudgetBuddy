@@ -69,8 +69,14 @@ function authHeader() {
 async function jfetch(url, opts = {}) {
   const res = await fetch(url, opts);
   // keep behavior similar to your current code (always .json())
-  // but guard against empty bodies on 204 etc.
-  try { return await res.json(); } catch { return { ok: res.ok, status: res.status }; }
+  // but guard against non-JSON/empty bodies on 204 etc.
+  const raw = await res.text();
+  if (!raw) return { ok: res.ok, status: res.status };
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { ok: res.ok, status: res.status, error: raw.slice(0, 180) };
+  }
 }
 
 export const api = {
@@ -82,6 +88,10 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+  },
+
+  async captcha() {
+    return jfetch(`${BASE}/api/auth/captcha`);
   },
 
   async login(payload) {
