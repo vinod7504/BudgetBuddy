@@ -76,7 +76,8 @@ export default function Register() {
   const [ok, setOk] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+  const siteKey = String(import.meta.env.VITE_RECAPTCHA_SITE_KEY || "").trim();
+  const captchaConfigured = siteKey.length > 0;
   const navigate = useNavigate();
 
   const submit = async (e) => {
@@ -94,7 +95,9 @@ export default function Register() {
         "Password must start with one capital letter, include a number & symbol, contain no spaces, only the first letter uppercase, and be at least 8 characters."
       );
     }
-    if (!siteKey) return setError("Captcha not configured.");
+    if (!captchaConfigured) {
+      return setError("Captcha is not configured for this deployment.");
+    }
     if (!captchaToken) return setError("Please complete the captcha.");
 
     setLoading(true);
@@ -140,13 +143,18 @@ export default function Register() {
             onChange={(e) => setForm({ ...form, password: e.target.value })}
           />
 
-          {/* Visible reCAPTCHA v2 checkbox */}
-          <ReCAPTCHA
-            sitekey={siteKey || "invalid-site-key"}
-            onChange={(token) => setCaptchaToken(token || "")}
-            onExpired={() => setCaptchaToken("")}
-            onErrored={() => setError("Captcha error. Please reload and try again.")}
-          />
+          {captchaConfigured ? (
+            <ReCAPTCHA
+              sitekey={siteKey}
+              onChange={(token) => setCaptchaToken(token || "")}
+              onExpired={() => setCaptchaToken("")}
+              onErrored={() => setError("Captcha error. Please reload and try again.")}
+            />
+          ) : (
+            <div className="error-text">
+              Captcha config missing on this deployment. Set <b>VITE_RECAPTCHA_SITE_KEY</b> in hosting environment variables.
+            </div>
+          )}
 
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
           {ok && <div style={{ color: "#34d399" }}>{ok}</div>}
