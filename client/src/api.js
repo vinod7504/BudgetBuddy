@@ -161,12 +161,17 @@ export const api = {
     });
   },
 
-  async listByMonth(month, year) {
+  async listByMonth(month, year, options = {}) {
     const url = new URL(`${BASE}/api/expenses`);
     if (month && year) {
       url.searchParams.set('month', month);
       url.searchParams.set('year', year);
     }
+    if (options.page) url.searchParams.set('page', String(options.page));
+    if (options.limit) url.searchParams.set('limit', String(options.limit));
+    if (options.q) url.searchParams.set('q', String(options.q));
+    if (options.sortBy) url.searchParams.set('sortBy', String(options.sortBy));
+    if (options.sortOrder) url.searchParams.set('sortOrder', String(options.sortOrder));
     return jfetch(url, { headers: { ...authHeader() } });
   },
 
@@ -179,6 +184,51 @@ export const api = {
 
   async prevMonthSummary() {
     return jfetch(`${BASE}/api/expenses/summary/previous-month`, {
+      headers: { ...authHeader() }
+    });
+  },
+
+  async insights(month, year, monthsBack = 6) {
+    const url = new URL(`${BASE}/api/expenses/insights`);
+    if (month) url.searchParams.set('month', month);
+    if (year) url.searchParams.set('year', year);
+    if (monthsBack) url.searchParams.set('monthsBack', monthsBack);
+    return jfetch(url, { headers: { ...authHeader() } });
+  },
+
+  async bankStatus() {
+    return jfetch(`${BASE}/api/banks/status`, {
+      headers: { ...authHeader() }
+    });
+  },
+
+  async bankOptions(phone) {
+    const url = new URL(`${BASE}/api/banks/options`);
+    url.searchParams.set('phone', String(phone || ''));
+    return jfetch(url, { headers: { ...authHeader() } });
+  },
+
+  async linkBank(payload /* { phone, bankCode, permissionGranted } */) {
+    return jfetch(`${BASE}/api/banks/link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async setActiveBank(bankCode) {
+    return jfetch(`${BASE}/api/banks/active`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify({ bankCode })
+    });
+  },
+
+  async bankAnalysis(month, year) {
+    const url = new URL(`${BASE}/api/banks/analysis`);
+    if (month) url.searchParams.set('month', month);
+    if (year) url.searchParams.set('year', year);
+    return jfetch(url, {
       headers: { ...authHeader() }
     });
   }

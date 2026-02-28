@@ -14,5 +14,9 @@ const expenseSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Common filters for lists, summaries, and trend lookups.
+expenseSchema.index({ userId: 1, date: -1 });
+expenseSchema.index({ userId: 1, type: 1, date: -1 });
+
 export const EXPENSE_TYPES = TYPES;
 export default mongoose.model('Expense', expenseSchema);

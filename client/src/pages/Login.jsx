@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 
 export default function Login() {
@@ -7,6 +7,8 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const inactiveLogout = location.state?.reason === "inactive";
 
   const submit = async (e) => {
     e.preventDefault();
@@ -26,7 +28,8 @@ export default function Login() {
         localStorage.setItem("token", res.token);
         localStorage.setItem("name", res.user?.name || "");
         localStorage.setItem("email", res.user?.email || "");
-        navigate("/"); // go to home
+        localStorage.setItem("bankOnboarded", "false");
+        navigate("/");
       }
     } catch (err) {
       setError("Network/CORS error. See console.");
@@ -40,6 +43,9 @@ export default function Login() {
     <div className="grid" style={{ maxWidth: 420, margin: "40px auto" }}>
       <div className="card">
         <h2>Login</h2>
+        {inactiveLogout && (
+          <div className="helper-text">You were logged out after 5 minutes of inactivity.</div>
+        )}
         <form onSubmit={submit} className="grid">
           <input className="input" placeholder="Email" type="email"
             value={form.email}

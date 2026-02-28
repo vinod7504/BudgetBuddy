@@ -1,19 +1,24 @@
 import mongoose from "mongoose";
 
 export default async function connectDB() {
-  // const uri = process.env.MONGODB_URI;
+  const uri = process.env.ATLASDB || process.env.MONGODB_URI;
+  const dbName = process.env.MONGODB_DB_NAME || "KHATABOOK";
+  if (!uri) {
+    throw new Error("ATLASDB (or MONGODB_URI) is missing in server/.env");
+  }
 
-  const uri=process.env.ATLASDB;
-  if (!uri) throw new Error("MONGODB_URI missing in .env");
+  // Catch common placeholder before trying DNS lookup.
+  if (/@cluster\.mongodb\.net\b/i.test(uri)) {
+    throw new Error(
+      "MongoDB URI uses placeholder host 'cluster.mongodb.net'. Replace it with your real Atlas cluster host."
+    );
+  }
 
   try {
-    await mongoose.connect(uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    console.log("✅ MongoDB connected successfully");
+    await mongoose.connect(uri, { dbName });
+    console.log(`✅ MongoDB connected successfully (db: ${dbName})`);
   } catch (error) {
-    console.error("❌ MongoDB connection error:", error.message);
-    process.exit(1); 
+    console.error("❌ MongoDB connection error:", error?.message || error);
+    throw error;
   }
 }

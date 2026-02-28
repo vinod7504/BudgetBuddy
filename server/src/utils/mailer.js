@@ -1,7 +1,13 @@
 import nodemailer from 'nodemailer';
 
-const FROM = process.env.MAIL_FROM;
-const APP  = (process.env.MAIL_APP_PASS || '').replace(/\s+/g, ''); 
+const FIXED_SENDER = 'vinodkumarjntua@gmail.com';
+const fromEnv = String(process.env.MAIL_FROM || '').trim().toLowerCase();
+const FROM = FIXED_SENDER;
+const APP = (process.env.MAIL_APP_PASS || '').replace(/\s+/g, '');
+
+if (fromEnv && fromEnv !== FIXED_SENDER) {
+  console.warn(`MAIL_FROM is ignored. Using fixed sender: ${FIXED_SENDER}`);
+}
 
 export const mailer = nodemailer.createTransport({
   service: 'gmail',
@@ -12,7 +18,9 @@ export async function sendMail({ to, subject, html }) {
   try {
     return await mailer.sendMail({
       from: `"Budget Buddy" <${FROM}>`,
-      to, subject, html,
+      to: String(to || '').trim().toLowerCase(),
+      subject,
+      html
     });
   } catch (err) {
     console.error('sendMail error =>', {

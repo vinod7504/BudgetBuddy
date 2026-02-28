@@ -109,7 +109,9 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import Otp from '../models/Otp.js';
 import auth from '../middleware/auth.js';
+import { sendMail } from '../utils/mailer.js';
 
 const router = Router();
 
@@ -118,6 +120,18 @@ const PASSWORD_RE = /^(?=.{8,})(?=.*\d)(?=.*[^A-Za-z0-9\s])[A-Z](?!.*[A-Z])[^\s]
 
 function passwordSuggestions() {
   return ['Abcdef1!','Moneyapp2@','Budget3#x'];
+}
+
+function genOtp() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function otpExpiry(minutes = 10) {
+  return new Date(Date.now() + minutes * 60 * 1000);
+}
+
+function canExposeDevOtp() {
+  return process.env.NODE_ENV !== 'production' || process.env.ALLOW_OTP_IN_RESPONSE === 'true';
 }
 
 async function verifyCaptcha(token, ip) {
@@ -196,7 +210,7 @@ router.post('/login', async (req, res) => {
     const normEmail = String(email).toLowerCase().trim();
     const user = await User.findOne({ email: normEmail });
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(404).json({ error: 'Email not registered. Please register with us first.' });
     }
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
@@ -216,7 +230,15 @@ router.post('/login', async (req, res) => {
     return res.json({
       message: 'Login successful',
       token,
-      user: { id: user._id, name: user.name, email: user.email }
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || '',
+        linkedBanks: user.linkedBanks || [],
+        activeBankCode: user.activeBankCode || '',
+        onboardingCompletedAt: user.onboardingCompletedAt || null
+      }
     });
   } catch (e) {
     console.error('Login error:', e?.message || e);
@@ -225,9 +247,129 @@ router.post('/login', async (req, res) => {
 });
 
 router.get('/me', auth, async (req, res) => {
-  const user = await User.findById(req.user.id).select('name email');
+  const user = await User.findById(req.user.id).select(
+    'name email phone linkedBanks activeBankCode bankConsentAt onboardingCompletedAt'
+  );
   return res.json({ user });
 });
 
-export default router;
+router.post('/password/forgot', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    if (!GMAIL_RE.test(email)) return res.status(400).json({ error: 'Email must end with @gmail.com' });
 
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.json({ message: 'If the email exists, an OTP has been sent.' });
+    }
+
+    const otp = genOtp();
+    const otpHash = await bcrypt.hash(otp, 10);
+    await Otp.findOneAndUpdate(
+      { email, purpose: 'reset' },
+      { otpHash, expiresAt: otpExpiry(10) },
+      { upsert: true, new: true }
+    );
+
+    try {
+      await sendMail({
+        to: email,
+        subject: 'Budget Buddy - Password Reset OTP',
+        html: `<p>Your password reset OTP is <b>${otp}</b>. It expires in 10 minutes.</p>`
+      });
+      return res.json({ message: 'If the email exists, an OTP has been sent.', mailDelivered: true });
+    } catch (mailErr) {
+      console.error('forgot-password mail error:', mailErr?.message || mailErr);
+      if (canExposeDevOtp()) {
+        return res.json({
+          message: 'Mail failed. Use OTP below for local testing.',
+          mailDelivered: false,
+          devOtp: otp
+        });
+      }
+      return res.status(500).json({ error: 'Unable to send OTP email right now. Please try again later.' });
+    }
+  } catch (e) {
+    console.error('password/forgot error:', e?.message || e);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/password/verify-otp', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const otp = String(req.body?.otp || '').trim();
+
+    if (!email || !otp) return res.status(400).json({ error: 'Email and OTP are required' });
+    if (!GMAIL_RE.test(email)) return res.status(400).json({ error: 'Email must end with @gmail.com' });
+    if (!/^\d{6}$/.test(otp)) return res.status(400).json({ error: 'OTP must be 6 digits' });
+    if (!process.env.JWT_SECRET) return res.status(500).json({ error: 'Server auth misconfiguration (JWT secret missing)' });
+
+    const rec = await Otp.findOne({ email, purpose: 'reset' });
+    if (!rec || rec.expiresAt < new Date()) {
+      return res.status(400).json({ error: 'OTP expired or not found' });
+    }
+
+    const ok = await bcrypt.compare(otp, rec.otpHash);
+    if (!ok) return res.status(400).json({ error: 'Invalid OTP' });
+
+    await Otp.deleteOne({ _id: rec._id });
+
+    const resetToken = jwt.sign(
+      { email, purpose: 'password-reset' },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    return res.json({ message: 'OTP verified', resetToken });
+  } catch (e) {
+    console.error('password/verify-otp error:', e?.message || e);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/password/reset', async (req, res) => {
+  try {
+    const resetToken = String(req.body?.resetToken || '').trim();
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (!resetToken || !newPassword) {
+      return res.status(400).json({ error: 'resetToken and newPassword are required' });
+    }
+    if (!PASSWORD_RE.test(newPassword)) {
+      return res.status(400).json({
+        error:
+          'Password must start with a capital letter, include a number & symbol, no spaces, only 1 uppercase (first char), min 8 chars.',
+        examples: passwordSuggestions()
+      });
+    }
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ error: 'Server auth misconfiguration (JWT secret missing)' });
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(resetToken, process.env.JWT_SECRET);
+    } catch {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    if (payload?.purpose !== 'password-reset' || !payload?.email) {
+      return res.status(400).json({ error: 'Invalid reset token payload' });
+    }
+
+    const user = await User.findOne({ email: String(payload.email).toLowerCase() });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    return res.json({ message: 'Password updated successfully. Please login with the new password.' });
+  } catch (e) {
+    console.error('password/reset error:', e?.message || e);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+export default router;

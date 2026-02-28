@@ -6,6 +6,7 @@ const GMAIL_RE = /^[a-z0-9._%+-]+@gmail\.com$/i;
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
+  const [devOtp, setDevOtp] = useState("");
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,6 +16,7 @@ export default function ForgotPassword() {
     e.preventDefault();
     setError("");
     setMsg("");
+    setDevOtp("");
 
     const cleanEmail = String(email || "").trim().toLowerCase();
     if (!cleanEmail) return setError("Email is required.");
@@ -30,7 +32,8 @@ export default function ForgotPassword() {
         setError(res.error);
         return;
       }
-      setMsg("If the email exists, an OTP has been sent.");
+      setMsg(res?.message || "If the email exists, an OTP has been sent.");
+      if (res?.devOtp) setDevOtp(String(res.devOtp));
       // small delay so the user sees the message before redirect
       setTimeout(() => {
         navigate(`/reset?email=${encodeURIComponent(cleanEmail)}`);
@@ -59,6 +62,12 @@ export default function ForgotPassword() {
 
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
           {msg && <div style={{ color: "#34d399" }}>{msg}</div>}
+          {devOtp && (
+            <div className="card" style={{ padding: 10 }}>
+              <div className="helper-text">Dev OTP (mail failed)</div>
+              <strong style={{ letterSpacing: 2 }}>{devOtp}</strong>
+            </div>
+          )}
 
           <button type="submit" disabled={loading}>
             {loading ? "Sending..." : "Send OTP"}
