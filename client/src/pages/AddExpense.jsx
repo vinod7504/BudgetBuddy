@@ -30,6 +30,7 @@ export default function AddExpense() {
   const [categories, setCategories] = useState(DEFAULT_TYPES);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [savingCategory, setSavingCategory] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -44,6 +45,39 @@ export default function AddExpense() {
     if (form.type !== CUSTOM_MARKER) return form.type;
     return normalizeCategory(customType);
   }, [form.type, customType]);
+
+  const addCategory = async () => {
+    setMsg("");
+    setErr("");
+    const category = normalizeCategory(customType);
+    if (!category) {
+      setErr("Enter a category name.");
+      return;
+    }
+
+    setSavingCategory(true);
+    try {
+      const res = await api.addExpenseCategory(category);
+      if (res?.error) {
+        setErr(res.error);
+        return;
+      }
+
+      if (Array.isArray(res?.categories) && res.categories.length > 0) {
+        setCategories(res.categories);
+      } else if (!categories.includes(category)) {
+        setCategories((prev) => [...prev, category]);
+      }
+
+      setForm((prev) => ({ ...prev, type: category }));
+      setCustomType("");
+      setMsg(`Category "${category}" added.`);
+    } catch {
+      setErr("Failed to add category. Please try again.");
+    } finally {
+      setSavingCategory(false);
+    }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -108,12 +142,18 @@ export default function AddExpense() {
               <option value={CUSTOM_MARKER}>+ Add New Category</option>
             </select>
             {form.type === CUSTOM_MARKER && (
-              <input
-                className="input"
-                placeholder="Enter new category (e.g. Travel, Shopping)"
-                value={customType}
-                onChange={(e) => setCustomType(e.target.value)}
-              />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input
+                  className="input"
+                  style={{ flex: "1 1 280px" }}
+                  placeholder="Enter new category (e.g. Travel, Shopping)"
+                  value={customType}
+                  onChange={(e) => setCustomType(e.target.value)}
+                />
+                <button type="button" onClick={addCategory} disabled={savingCategory}>
+                  {savingCategory ? "Adding..." : "Add Category"}
+                </button>
+              </div>
             )}
           </div>
 

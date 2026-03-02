@@ -177,6 +177,14 @@ export const api = {
     });
   },
 
+  async addExpenseCategory(category) {
+    return jfetch(`${BASE}/api/expenses/categories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify({ category })
+    });
+  },
+
   async listByMonth(month, year, options = {}) {
     const url = new URL(`${BASE}/api/expenses`);
     if (month && year) {

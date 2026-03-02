@@ -129,6 +129,7 @@
 
 import { Router } from 'express';
 import Expense, { DEFAULT_EXPENSE_TYPES } from '../models/Expense.js';
+import User from '../models/User.js';
 import auth from '../middleware/auth.js';
 import mongoose from 'mongoose';
 
@@ -180,6 +181,32 @@ function byTypeWithDefaults(aggRows) {
     .sort((a, b) => b.total - a.total);
 }
 
+function buildCategoryList(...sources) {
+  const extras = new Set();
+  for (const source of sources) {
+    for (const type of source || []) {
+      const normalized = normalizeType(type);
+      if (!normalized || DEFAULT_EXPENSE_TYPES.includes(normalized)) continue;
+      extras.add(normalized);
+    }
+  }
+  return [...DEFAULT_EXPENSE_TYPES, ...Array.from(extras).sort((a, b) => a.localeCompare(b))];
+}
+
+async function saveCustomCategory(userId, category) {
+  const normalized = normalizeType(category);
+  if (!normalized || DEFAULT_EXPENSE_TYPES.includes(normalized)) return;
+  await User.updateOne({ _id: userId }, { $addToSet: { customCategories: normalized } });
+}
+
+async function categoriesForUser(userId) {
+  const [dynamic, user] = await Promise.all([
+    Expense.distinct('type', { userId }),
+    User.findById(userId).select('customCategories').lean()
+  ]);
+  return buildCategoryList(dynamic, user?.customCategories || []);
+}
+
 // Create expense
 router.post('/', async (req, res) => {
   try {
@@ -198,6 +225,7 @@ router.post('/', async (req, res) => {
       date: date ? new Date(date) : new Date(),
       notes
     });
+    await saveCustomCategory(req.user.id, normalizedType);
     res.status(201).json({ message: 'Created', expense: exp });
   } catch (e) {
     console.error(e);
@@ -496,20 +524,24 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, type, amount, date, notes } = req.body;
+    const normalizedType = type != null ? normalizeType(type) : '';
     const exp = await Expense.findOne({ _id: id, userId: req.user.id });
     if (!exp) return res.status(404).json({ error: 'Expense not found' });
-    if (type != null && !normalizeType(type)) return res.status(400).json({ error: 'Invalid type' });
+    if (type != null && !normalizedType) return res.status(400).json({ error: 'Invalid type' });
     if (amount != null && (!Number.isFinite(Number(amount)) || Number(amount) < 0)) {
       return res.status(400).json({ error: 'amount must be a valid number' });
     }
 
     if (name != null) exp.name = name;
-    if (type != null) exp.type = normalizeType(type);
+    if (type != null) exp.type = normalizedType;
     if (amount != null) exp.amount = Number(amount);
     if (date != null) exp.date = new Date(date);
     if (notes != null) exp.notes = notes;
 
     await exp.save();
+    if (type != null) {
+      await saveCustomCategory(req.user.id, normalizedType);
+    }
     res.json({ message: 'Updated', expense: exp });
   } catch (e) {
     console.error(e);
@@ -520,13 +552,33 @@ router.put('/:id', async (req, res) => {
 // Distinct categories used by the logged-in user (+ defaults for quick pickers)
 router.get('/categories', async (req, res) => {
   try {
-    const dynamic = await Expense.distinct('type', { userId: req.user.id });
-    const normalized = (dynamic || [])
-      .map((type) => normalizeType(type))
-      .filter(Boolean);
-    const extra = normalized.filter((type) => !DEFAULT_EXPENSE_TYPES.includes(type)).sort((a, b) => a.localeCompare(b));
-    const categories = [...DEFAULT_EXPENSE_TYPES, ...extra];
+    const categories = await categoriesForUser(req.user.id);
     res.json({ categories });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/categories', async (req, res) => {
+  try {
+    const category = normalizeType(req.body?.category);
+    if (!category) {
+      return res.status(400).json({ error: 'Category is required' });
+    }
+
+    const user = await User.findById(req.user.id).select('customCategories');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const nextCustomCategories = buildCategoryList(user.customCategories || [], [category])
+      .filter((type) => !DEFAULT_EXPENSE_TYPES.includes(type));
+    user.customCategories = nextCustomCategories;
+    await user.save();
+
+    const categories = await categoriesForUser(req.user.id);
+    res.status(201).json({ message: 'Category added', category, categories });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });

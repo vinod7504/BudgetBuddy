@@ -19,6 +19,7 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true, lowercase: true, index: true },
     passwordHash: { type: String, required: true },
     phone: { type: String, trim: true, default: '' },
+    customCategories: { type: [String], default: [] },
     linkedBanks: { type: [linkedBankSchema], default: [] },
     activeBankCode: { type: String, default: '' },
     bankConsentAt: { type: Date, default: null },
